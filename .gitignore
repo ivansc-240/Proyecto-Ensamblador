@@ -1,0 +1,13 @@
+# ejecutables
+*.exe
+*.out
+BitQuest
+
+# archivos de compilacion
+*.o
+*.obj
+
+# configuraciones
+.vscode/
+*.swp
+.DS_Store
