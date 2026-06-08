@@ -18,6 +18,6 @@ extern char mapa[FILAS][COLUMNAS];
 
 void dibujar_mapa(char m[FILAS][COLUMNAS], int cam_fila, int cam_col);
 
-void inicializar_mapa(void);
+void inicializar_mapa(int nivel);
 
 #endif
