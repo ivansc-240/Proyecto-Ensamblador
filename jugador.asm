@@ -7,6 +7,8 @@ section .text
     extern jugador_col
     extern jugador_tiene_llave
     extern jugador_gano
+    extern jugador_monedas
+    extern monedas_nivel
     extern mapa
 
 ; int es_muro_asm(char celda)
@@ -77,21 +79,29 @@ mover_jugador:
     cmp     eax, 1
     je      .fin
 
-    cmp     r9, 'D'
+    cmp     r9, 'P'             ; Puerta
     jne     .check_salida
     cmp     dword [rel jugador_tiene_llave], 0
     je      .fin
 
 .check_salida:
-    cmp     r9, 'S'
+    cmp     r9, 'S'             ; Salida
     jne     .check_llave
+    ; Solo requiere llave, la restricción de monedas fue eliminada
     cmp     dword [rel jugador_tiene_llave], 0
     je      .fin
 
 .check_llave:
-    cmp     r9, 'K'
-    jne     .check_gano
+    cmp     r9, 'L'             ; Llave
+    jne     .check_moneda
     mov     dword [rel jugador_tiene_llave], 1
+
+.check_moneda:
+    cmp     r9, '$'             ; Moneda
+    jne     .check_gano
+    mov     eax, dword [rel jugador_monedas]
+    inc     eax
+    mov     dword [rel jugador_monedas], eax
 
 .check_gano:
     cmp     r9, 'S'
@@ -112,7 +122,7 @@ mover_jugador:
     imul    rax, 60
     movsx   r10, edx
     add     rax, r10
-    mov     byte [r8 + rax], 'P'
+    mov     byte [r8 + rax], 'J' ; Dibuja al Jugador
 
 .fin:
     pop     rdi

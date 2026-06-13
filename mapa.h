@@ -9,10 +9,11 @@
 
 #define MURO    '#'
 #define CAMINO  ' '
-#define JUGADOR 'P'
-#define LLAVE   'K'
-#define PUERTA  'D'
+#define JUGADOR 'J'
+#define LLAVE   'L'
+#define PUERTA  'P'
 #define SALIDA  'S'
+#define MONEDA  '$'
 
 extern char mapa[FILAS][COLUMNAS];
 

@@ -83,6 +83,11 @@ void inicializar_mapa(int nivel) {
  
         for (int c = 38; c <= 47; c++) mapa[43][c] = MURO;
         mapa[43][47] = CAMINO;
+
+        /* ── Moneda(s) del nivel 1: 1 moneda obligatoria ─────────────────
+         * Colocada en el interior del anillo 4, zona sur-este.
+         * El jugador debe explorar hacia allí antes de buscar la salida.  */
+        mapa[40][40] = MONEDA;
  
         /* ── Cámara LLAVE K – esquina inferior-izquierda ─────────────────── */
         /* Cubículo sellado en (52..56 , 3..7), entrada única fila 52 col 6 */
@@ -208,6 +213,12 @@ void inicializar_mapa(int nivel) {
         for (int c = 3; c <= 13; c++) mapa[57][c] = MURO;
         mapa[57][7] = CAMINO;
         mapa[54][4] = LLAVE;
+
+        /* ── Monedas del nivel 2: 2 monedas obligatorias ─────────────────
+         * Moneda 1: sala (2,1) — zona sur-oeste, obliga a explorar abajo.
+         * Moneda 2: sala (1,2) — zona norte-este, obliga a explorar arriba. */
+        mapa[38][22] = MONEDA;   /* sala (2,1): centro-sur                */
+        mapa[10][37] = MONEDA;   /* sala (0,2): norte, accesible por (0,1) */
  
     } /* fin nivel 2 */
  
@@ -313,9 +324,18 @@ void inicializar_mapa(int nivel) {
         for (int c = 20; c <= 30; c++) mapa[34][c] = CAMINO;
         for (int f = 28; f <= 34; f++) mapa[f][20] = CAMINO;
  
-        /* Corredor decorativo norte-centro */
+        /* ── Corredor decorativo norte-centro */
         for (int c = 18; c <= 26; c++) mapa[18][c] = CAMINO;
         for (int f = 15; f <= 22; f++) mapa[f][26] = CAMINO;
+
+        /* ── Monedas del nivel 3: 3 monedas obligatorias ─────────────────
+         * Una por cada rama principal, forzando exploración completa.
+         * Moneda 1: Ruta Norte — cámara trampa (zona norte).
+         * Moneda 2: Ruta Este  — sala E2 (zona este-central).
+         * Moneda 3: Ruta Sur   — sala S2 (zona sur-oeste).              */
+        mapa[3][23]  = MONEDA;   /* Ruta Norte: interior cámara trampa    */
+        mapa[24][43] = MONEDA;   /* Ruta Este:  sala E2, accesible por col42 */
+        mapa[44][18] = MONEDA;   /* Ruta Sur:   sala S2, centro-sur       */
  
     } /* fin nivel 3 */
  
