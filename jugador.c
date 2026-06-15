@@ -74,7 +74,7 @@ void mover_jugador(char tecla) {
        de rutinas.asm, que opera sobre arreglo row-major de char. */
     if (validar_movimiento((char*)mapa, COLUMNAS, f_nueva, c_nueva) == 0) return;
 
-    /* Evaluación de PUERTA ('P').
+    /* Evaluación de PUERTA ('D').
        Si la celda destino es puerta y el jugador no posee la llave, el movimiento
        queda bloqueado aunque validar_movimiento() lo haya aprobado (la puerta no
        es '#', por lo que pasa la validación física). */
@@ -82,7 +82,7 @@ void mover_jugador(char tecla) {
         if (!jugador_tiene_llave) return;   /* jugador_tiene_llave == 0: bloqueado */
     }
 
-    /* Evaluación de LLAVE ('L').
+    /* Evaluación de LLAVE ('K').
        El flag se activa antes de actualizar la posición; la llave permanece
        consumida del mapa al sobreescribirse la celda con JUGADOR en el paso final. */
     if (detectar_objeto_celda((char*)mapa, COLUMNAS, f_nueva, c_nueva, LLAVE)) {
@@ -96,10 +96,10 @@ void mover_jugador(char tecla) {
         jugador_monedas++;                  /* jugador_monedas ← jugador_monedas + 1 */
     }
 
-    /* Evaluación de SALIDA ('S').
+    /* Evaluación de SALIDA ('E').
        Establece la condición de victoria; main.c detecta jugador_gano == 1
        en el bucle principal para iniciar la secuencia de fin de nivel.
-       El jugador se posiciona sobre 'S' antes de que main.c procese la salida. */
+       El jugador se posiciona sobre 'E' antes de que main.c procese la salida. */
     if (detectar_objeto_celda((char*)mapa, COLUMNAS, f_nueva, c_nueva, SALIDA)) {
         jugador_gano = 1;                   /* jugador_gano ← 1 */
     }

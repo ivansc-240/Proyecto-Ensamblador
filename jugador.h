@@ -19,12 +19,12 @@ extern int jugador_col;         /* Columna actual del jugador en el mapa [0, 59]
 
 extern int jugador_tiene_llave; /* Flag de posesión de llave.
                                    0 = no posee llave.
-                                   1 = llave recogida; habilita el paso por 'P'
+                                   1 = llave recogida; habilita el paso por 'D'
                                    (puerta) en mover_jugador().                */
 
 extern int jugador_gano;        /* Flag de condición de victoria.
                                    0 = partida en curso.
-                                   1 = jugador alcanzó la celda 'S' con llave;
+                                   1 = jugador alcanzó la celda 'E' con llave;
                                    activa la secuencia de fin de nivel en main.c.*/
 
 extern int jugador_monedas;     /* Monedas recogidas en el nivel actual.
@@ -67,7 +67,7 @@ extern int jugador_niveles;     /* Contador de niveles completados.
  *           y el vector asociado a 'tecla'. Invoca validar_movimiento() para
  *           verificar transitabilidad. Si la celda es válida, actualiza
  *           jugador_fila / jugador_col, incrementa jugador_pasos e
- *           interpreta el contenido de la celda destino ('$', 'L', 'P', 'S').
+ *           interpreta el contenido de la celda destino ('M', 'K', 'D', 'E').
  */
 void mover_jugador(char tecla);
 
@@ -118,7 +118,7 @@ int contar_caracter_mapa(char *mapa_ptr, int total_celdas, char car);
  *           0 si la celda es '#', o si fila/col están fuera del rango [0, 59].
  * Efecto  : Lectura de solo lectura sobre mapa_ptr. Ningún estado global
  *           es modificado. La evaluación de posesión de llave para traspasar
- *           puertas ('P') no está contemplada aquí; reside en mover_jugador().
+ *           puertas ('D') no está contemplada aquí; reside en mover_jugador().
  */
 int validar_movimiento(char *mapa_ptr, int columnas, int fila, int col);
 
@@ -142,7 +142,7 @@ int calcular_puntaje(int monedas, int pasos, int niveles);
  *           columnas — número de columnas; 60.
  *           fila     — fila a inspeccionar [0, 59].
  *           col      — columna a inspeccionar [0, 59].
- *           objeto   — carácter a comparar ('L', 'P', 'S', '$', '#', etc.).
+ *           objeto   — carácter a comparar ('K', 'D', 'E', 'M', '#', etc.).
  *                      5.º argumento; pasado en pila a [RSP+40] en el llamado.
  * Salida  : 1 si mapa[fila * columnas + col] == objeto y las coordenadas son
  *             válidas.

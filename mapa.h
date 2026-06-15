@@ -20,10 +20,10 @@
  */
 #define MURO    '#'
 #define CAMINO  '.'
-#define JUGADOR 'J'
-#define LLAVE   'L'
-#define PUERTA  'P'
-#define SALIDA  'S'
+#define JUGADOR 'P'
+#define LLAVE   'K'
+#define PUERTA  'D'
+#define SALIDA  'E'
 #define MONEDA  'M'
 
 /*

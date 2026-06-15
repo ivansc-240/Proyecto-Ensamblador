@@ -55,7 +55,7 @@ char mapa[FILAS][COLUMNAS];
  *   4. Escribe JUGADOR en mapa[1][1] al final, independientemente del nivel.
  *
  * Invariantes de diseño comunes a todos los niveles:
- *   – La PUERTA ('D') es el único acceso a la sala que contiene la SALIDA.
+ *   – La PUERTA ('D') es el único acceso a la sala que contiene la SALIDA ('E').
  *   – La LLAVE ('K') está siempre ubicada en una cámara sellada de acceso
  *     no trivial.
  *   – Las monedas se distribuyen en zonas que obligan a exploración completa.
