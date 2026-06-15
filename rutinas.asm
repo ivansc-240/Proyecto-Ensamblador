@@ -246,7 +246,7 @@ contar_celdas_libres:
     cmp     r10d, edx           ; FLAGS ← R10D − EDX
     jge     .ccl_fin            ; i ≥ total_celdas → fin de bucle
     movzx   r11d, byte [rcx + r10]  ; R11D ← zero-extend(mapa[i])
-    cmp     r11d, ' '           ; FLAGS ← R11D − 0x20
+    cmp     r11d, '.'           ; FLAGS ← R11D − 0x20
     jne     .ccl_siguiente      ; ≠ espacio → no contar
     inc     eax                 ; EAX ← EAX + 1: celda libre registrada
 

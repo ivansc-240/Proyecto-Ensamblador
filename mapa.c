@@ -800,28 +800,28 @@ void dibujar_mapa(char m[FILAS][COLUMNAS], int cam_fila, int cam_col) {
             char celda = m[fila][col];   /* byte de la celda actual */
 
             switch (celda) {
-                case '#':   /* MURO: bloque sólido U+2588 (█), gris oscuro \033[90m */
+                case MURO:      /* bloque sólido U+2588 (█), gris oscuro \033[90m */
                     printf("\033[90m\xE2\x96\x88\033[0m");
                     break;
-                case '.':   /* CAMINO: punto ASCII '.', blanco \033[37m             */
+                case CAMINO:    /* punto ASCII '.', blanco \033[37m             */
                     printf("\033[37m.\033[0m");
                     break;
-                case 'P':   /* JUGADOR: carácter 'P', cian brillante \033[96m       */
-                    printf("\033[96mP\033[0m");
+                case JUGADOR:   /* cian brillante \033[96m       */
+                    printf("\033[96m%c\033[0m", celda);
                     break;
-                case 'M':   /* MONEDA: carácter 'M', amarillo brillante \033[93m    */
-                    printf("\033[93mM\033[0m");
+                case MONEDA:    /* amarillo brillante \033[93m    */
+                    printf("\033[93m%c\033[0m", celda);
                     break;
-                case 'K':   /* LLAVE: carácter 'K', verde brillante \033[92m        */
-                    printf("\033[92mK\033[0m");
+                case LLAVE:     /* verde brillante \033[92m        */
+                    printf("\033[92m%c\033[0m", celda);
                     break;
-                case 'D':   /* PUERTA: carácter 'D', rojo \033[31m                  */
-                    printf("\033[31mD\033[0m");
+                case PUERTA:    /* rojo \033[31m                  */
+                    printf("\033[31m%c\033[0m", celda);
                     break;
-                case 'E':   /* SALIDA: carácter 'E', magenta brillante \033[95m     */
-                    printf("\033[95mE\033[0m");
+                case SALIDA:    /* magenta brillante \033[95m     */
+                    printf("\033[95m%c\033[0m", celda);
                     break;
-                default:    /* Carácter no mapeado: se emite sin modificar el color  */
+                default:        /* Carácter no mapeado: sin modificar el color  */
                     putchar(celda);
                     break;
             }
