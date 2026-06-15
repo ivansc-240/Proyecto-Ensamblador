@@ -1,258 +1,285 @@
-; =============================================================================
-; jugador.asm  –  BitQuest  |  x86-64 Windows ABI (fastcall)
-; Convención: RCX, RDX, R8, R9  |  Shadow space 32 bytes antes de cada CALL
-;             RAX, RCX, RDX, R8, R9, R10, R11  → volátiles (no preservar)
-;             RBX, RSI, RDI, RBP, R12-R15       → no volátiles (preservar)
-; =============================================================================
-
 section .text
 
-    ; ── Símbolos exportados ───────────────────────────────────────────────
+    ; Símbolos exportados — visibles al enlazador externo (C runtime / MSVC/GCC)
     global contar_caracter_mapa     ; Función 1
     global validar_movimiento       ; Función 2
     global calcular_puntaje         ; Función 3
     global detectar_objeto_celda    ; Función 4
     global contar_celdas_libres     ; Función 5
-    global es_muro_asm              ; Auxiliar (mantiene compatibilidad)
+    global es_muro_asm              ; Auxiliar: mantiene compatibilidad con jugador.h
 
-    ; ── Variables externas de C ───────────────────────────────────────────
-    extern jugador_fila
-    extern jugador_col
-    extern jugador_tiene_llave
-    extern jugador_gano
-    extern jugador_monedas
-    extern monedas_nivel
-    extern mapa
-    extern jugador_pasos            ; NUEVO: contador de pasos
-    extern jugador_puntaje          ; NUEVO: puntaje calculado
-    extern jugador_niveles          ; NUEVO: niveles completados
+    ; Variables globales definidas en la unidad de traducción C (.c).
+    ; Acceso mediante direccionamiento de memoria relativo a RIP en tiempo de enlace.
+    extern jugador_fila             ; int  — fila actual del jugador en el mapa
+    extern jugador_col              ; int  — columna actual del jugador en el mapa
+    extern jugador_tiene_llave      ; int  — flag: 1 si posee la llave, 0 si no
+    extern jugador_gano             ; int  — flag: 1 si alcanzó la salida con llave
+    extern jugador_monedas          ; int  — monedas recolectadas en el nivel actual
+    extern monedas_nivel            ; int  — total de monedas presentes en el nivel
+    extern mapa                     ; char[] — arreglo lineal row-major del mapa
+    extern jugador_pasos            ; int  — contador acumulado de pasos realizados
+    extern jugador_puntaje          ; int  — puntaje calculado tras aplicar fórmula
+    extern jugador_niveles          ; int  — contador de niveles completados
 
 ; =============================================================================
 ; FUNCIÓN 1: contar_caracter_mapa
 ; Prototipo C: int contar_caracter_mapa(char *mapa, int total_celdas, char car);
 ;
-; Propósito : Recorre el arreglo lineal del mapa y cuenta cuántas celdas
-;             contienen el carácter solicitado. Se usa para contabilizar
-;             monedas ('$') al cargar un nivel sin "quemar" el valor en C.
+; Entrada:
+;   RCX  — dirección base del arreglo lineal del mapa (char *)
+;   EDX  — número total de celdas a examinar (int; 3600 para mapa 60×60)
+;   R8B  — carácter a contar (char; p.ej. '$' para monedas)
 ;
-; Parámetros (Windows x64 fastcall):
-;   RCX  = dirección base del mapa  (char *)
-;   EDX  = total de celdas          (int, 3600 para mapa 60×60)
-;   R8B  = carácter a buscar        (char)
+; Salida:
+;   EAX  — número de ocurrencias del carácter en el rango [0, total_celdas)
 ;
-; Retorno:
-;   EAX  = cantidad de coincidencias
+; Operación en registros:
+;   EAX  acumula el conteo de coincidencias.
+;   R10D mantiene el índice de iteración (i).
+;   R11D almacena el carácter objetivo en extensión sin signo.
+;   R9D  almacena temporalmente cada byte leído del mapa.
+;
+; Preservación: ningún registro no volátil es modificado; no se requiere
+;               prólogo/epílogo de pila.
 ; =============================================================================
 contar_caracter_mapa:
-    ; No usamos registros no volátiles → sin push/pop necesario
-    xor     eax, eax            ; contador = 0
-    xor     r10d, r10d          ; índice i  = 0
-    movzx   r11d, r8b           ; r11d = carácter buscado (sin signo)
-    test    edx, edx
-    jle     .ccm_fin            ; total <= 0 → salir
+    xor     eax, eax            ; EAX ← 0  (contador de coincidencias)
+    xor     r10d, r10d          ; R10D ← 0 (índice i)
+    movzx   r11d, r8b           ; R11D ← zero-extend(R8B): carácter objetivo sin signo
+    test    edx, edx            ; FLAGS ← EDX AND EDX
+    jle     .ccm_fin            ; EDX ≤ 0 → no hay celdas que examinar; saltar al retorno
 
 .ccm_bucle:
-    cmp     r10d, edx           ; i < total_celdas ?
-    jge     .ccm_fin
-    movzx   r9d, byte [rcx + r10]   ; celda actual (sin signo)
-    cmp     r9d, r11d
-    jne     .ccm_siguiente
-    inc     eax                 ; coincidencia → incrementar contador
+    cmp     r10d, edx           ; FLAGS ← R10D − EDX
+    jge     .ccm_fin            ; i ≥ total_celdas → bucle terminado
+    movzx   r9d, byte [rcx + r10]   ; R9D ← zero-extend(mapa[i]): byte en índice i
+    cmp     r9d, r11d           ; FLAGS ← R9D − R11D
+    jne     .ccm_siguiente      ; byte ≠ objetivo → no contar
+    inc     eax                 ; EAX ← EAX + 1: coincidencia registrada
 
 .ccm_siguiente:
-    inc     r10d
-    jmp     .ccm_bucle
+    inc     r10d                ; R10D ← R10D + 1 (i++)
+    jmp     .ccm_bucle          ; siguiente iteración
 
 .ccm_fin:
-    ret
+    ret                         ; retorna con EAX = conteo total
 
 ; =============================================================================
 ; FUNCIÓN 2: validar_movimiento
 ; Prototipo C: int validar_movimiento(char *mapa, int columnas, int fila, int col);
 ;
-; Propósito : Determina si la celda (fila, col) es transitable.
-;             Reemplaza la validación inline de mover_jugador.
+; Entrada:
+;   RCX  — dirección base del mapa (char *)
+;   EDX  — número de columnas por fila (int; 60 para mapa 60×60)
+;   R8D  — fila propuesta para el movimiento (int)
+;   R9D  — columna propuesta para el movimiento (int)
 ;
-; Parámetros:
-;   RCX  = dirección base del mapa
-;   EDX  = número de columnas (60)
-;   R8D  = fila  propuesta
-;   R9D  = columna propuesta
+; Salida:
+;   EAX  = 1 → celda transitable (espacio libre, moneda, llave, puerta abierta, salida)
+;   EAX  = 0 → celda bloqueada (carácter '#') o coordenada fuera del mapa
 ;
-; Retorno:
-;   EAX  = 1 → movimiento válido (camino libre, moneda, llave, puerta abierta, salida)
-;           0 → bloqueado (muro '#' o fuera de límites)
+; Operación en registros:
+;   R10D almacena el byte leído de la celda evaluada.
+;   RAX  se usa como índice lineal de 64 bits tras extensión de signo.
 ;
-; Nota: Esta función NO evalúa si el jugador tiene llave; esa lógica de alto
-;       nivel sigue en mover_jugador, que llama aquí solo para la colisión física.
+; Nota: la evaluación de la posesión de llave para traspasar puertas no
+;       reside en esta función; corresponde al llamador (mover_jugador).
 ; =============================================================================
 validar_movimiento:
-    ; Verificar límites: 0 <= fila < 60  y  0 <= col < 60
-    xor     eax, eax            ; asumir inválido
-    cmp     r8d, 0
-    jl      .vm_invalido
-    cmp     r8d, 60
-    jge     .vm_invalido
-    cmp     r9d, 0
-    jl      .vm_invalido
-    cmp     r9d, 60
-    jge     .vm_invalido
+    xor     eax, eax            ; EAX ← 0 (asumir movimiento inválido)
 
-    ; Calcular índice lineal: idx = fila * columnas + col
-    mov     eax, r8d            ; eax = fila
-    imul    eax, edx            ; eax = fila * columnas
-    add     eax, r9d            ; eax += col
-    movsx   rax, eax            ; extender a 64 bits (índice seguro)
-    movzx   r10d, byte [rcx + rax]   ; celda = mapa[fila][col]
+    ; Verificación de límites: 0 ≤ fila < 60
+    cmp     r8d, 0              ; FLAGS ← R8D − 0
+    jl      .vm_invalido        ; fila < 0 → fuera del mapa
+    cmp     r8d, 60             ; FLAGS ← R8D − 60
+    jge     .vm_invalido        ; fila ≥ 60 → fuera del mapa
 
-    ; Verificar si es MURO
-    xor     eax, eax            ; asumir 0 (bloqueado)
-    cmp     r10d, '#'
-    je      .vm_invalido        ; es muro → retornar 0
+    ; Verificación de límites: 0 ≤ col < 60
+    cmp     r9d, 0              ; FLAGS ← R9D − 0
+    jl      .vm_invalido        ; col < 0 → fuera del mapa
+    cmp     r9d, 60             ; FLAGS ← R9D − 60
+    jge     .vm_invalido        ; col ≥ 60 → fuera del mapa
 
-    mov     eax, 1              ; cualquier otro carácter → válido
+    ; Cálculo del índice lineal: idx = fila * columnas + col
+    mov     eax, r8d            ; EAX ← fila
+    imul    eax, edx            ; EAX ← fila * columnas  (producto de 32 bits)
+    add     eax, r9d            ; EAX ← (fila * columnas) + col
+    movsx   rax, eax            ; RAX ← sign-extend(EAX): índice seguro a 64 bits
+                                ;        evita wrap-around en aritmética de punteros
+    movzx   r10d, byte [rcx + rax]  ; R10D ← zero-extend(mapa[idx]): byte de la celda
+
+    ; Evaluación del contenido de la celda
+    xor     eax, eax            ; EAX ← 0 (asumir bloqueado)
+    cmp     r10d, '#'           ; FLAGS ← R10D − 0x23
+    je      .vm_invalido        ; celda es muro → retornar 0
+
+    mov     eax, 1              ; cualquier carácter distinto de '#' → válido
 
 .vm_invalido:
-    ret
+    ret                         ; retorna con EAX = 0 (inválido) o 1 (válido)
 
 ; =============================================================================
 ; FUNCIÓN 3: calcular_puntaje
 ; Prototipo C: int calcular_puntaje(int monedas, int pasos, int niveles);
 ;
-; Propósito : Aplica la fórmula de puntuación íntegramente en ensamblador.
-;             Fórmula: (monedas * 100) + (niveles * 500) - pasos
+; Entrada:
+;   ECX  — monedas recolectadas (acumulado total)
+;   EDX  — pasos realizados (penalización)
+;   R8D  — niveles completados
 ;
-; Parámetros:
-;   ECX  = monedas recolectadas (total acumulado)
-;   EDX  = pasos realizados
-;   R8D  = niveles completados
+; Salida:
+;   EAX  — puntaje resultante; puede ser negativo si pasos > monedas*100 + niveles*500
 ;
-; Retorno:
-;   EAX  = puntaje final (puede ser negativo si pasos es muy alto)
+; Fórmula aplicada:
+;   puntaje = (monedas × 100) + (niveles × 500) − pasos
+;
+; Operación en registros:
+;   EAX  acumula los términos positivos de la fórmula.
+;   R10D calcula el término (niveles × 500) de forma independiente antes de sumarse.
+;   EDX  se substrae al final como penalización por pasos.
+;
+; Preservación: ningún registro no volátil es modificado.
 ; =============================================================================
 calcular_puntaje:
-    ; Parte 1: monedas * 100
-    mov     eax, ecx
-    imul    eax, 100            ; eax = monedas * 100
+    ; Término 1: monedas × 100
+    mov     eax, ecx            ; EAX ← monedas
+    imul    eax, 100            ; EAX ← monedas × 100
 
-    ; Parte 2: niveles * 500
-    mov     r10d, r8d
-    imul    r10d, 500           ; r10d = niveles * 500
+    ; Término 2: niveles × 500
+    mov     r10d, r8d           ; R10D ← niveles
+    imul    r10d, 500           ; R10D ← niveles × 500
 
-    ; Parte 3: sumar y restar pasos
-    add     eax, r10d           ; eax = (monedas*100) + (niveles*500)
-    sub     eax, edx            ; eax -= pasos
+    ; Acumulación y penalización
+    add     eax, r10d           ; EAX ← (monedas×100) + (niveles×500)
+    sub     eax, edx            ; EAX ← suma_términos_positivos − pasos
 
-    ret
+    ret                         ; retorna con EAX = puntaje final
 
 ; =============================================================================
 ; FUNCIÓN 4: detectar_objeto_celda
 ; Prototipo C: int detectar_objeto_celda(char *mapa, int columnas,
 ;                                        int fila, int col, char objeto);
 ;
-; Propósito : Comprueba si una celda específica contiene exactamente el
-;             carácter buscado ('L', 'P', 'S', '$', etc.).
+; Entrada:
+;   RCX      — dirección base del mapa (char *)
+;   EDX      — número de columnas (int; 60)
+;   R8D      — fila a evaluar (int)
+;   R9D      — columna a evaluar (int)
+;   [RSP+40] — 5.º argumento: carácter del objeto a buscar (char, pasado como int)
+;              Disposición de la pila al entrar (sin prólogo):
+;                [RSP+ 0] = dirección de retorno (8 bytes)
+;                [RSP+ 8] = shadow space para RCX
+;                [RSP+16] = shadow space para RDX
+;                [RSP+24] = shadow space para R8
+;                [RSP+32] = shadow space para R9
+;                [RSP+40] = 5.º argumento (primer parámetro en pila)
 ;
-; Parámetros:
-;   RCX  = dirección base del mapa
-;   EDX  = número de columnas (60)
-;   R8D  = fila  a revisar
-;   R9D  = columna a revisar
-;   [pila+40] = carácter del objeto (5.º parámetro, tras shadow space de 32 bytes
-;               y dirección de retorno de 8 bytes → RSP+40 al entrar a la función)
+; Salida:
+;   EAX  = 1 si mapa[fila][col] == objeto
+;   EAX  = 0 si la celda no coincide o las coordenadas están fuera de límites
 ;
-; Retorno:
-;   EAX  = 1 si la celda coincide, 0 si no
+; Operación en registros:
+;   R10D almacena el carácter objetivo leído de la pila.
+;   R11D almacena el byte leído de la celda del mapa.
+;   RAX  se usa como índice lineal de 64 bits.
 ;
-; Convención Windows x64: el 5.º argumento entero va en la PILA.
-; El caller reserva 32 bytes de shadow space, por lo que al entrar aquí:
-;   [RSP+0]  = dirección de retorno
-;   [RSP+8]  = shadow para RCX  (no usado por nosotros)
-;   [RSP+16] = shadow para RDX
-;   [RSP+24] = shadow para R8
-;   [RSP+32] = shadow para R9
-;   [RSP+40] = 5.º argumento (char objeto, pasado como int de 32 bits)
+; Preservación: ningún registro no volátil es modificado.
 ; =============================================================================
 detectar_objeto_celda:
-    ; Leer el 5.º parámetro de la pila
-    movzx   r10d, byte [rsp+40]     ; r10d = objeto a buscar
+    ; Lectura del 5.º parámetro desde la pila (Windows x64: primer arg en pila)
+    movzx   r10d, byte [rsp+40]     ; R10D ← zero-extend(*(RSP+40)): carácter objetivo
 
-    ; Verificar límites
-    xor     eax, eax
-    cmp     r8d, 0
-    jl      .doc_no
-    cmp     r8d, 60
-    jge     .doc_no
-    cmp     r9d, 0
-    jl      .doc_no
-    cmp     r9d, 60
-    jge     .doc_no
+    ; Verificación de límites: 0 ≤ fila < 60
+    xor     eax, eax                ; EAX ← 0 (asumir no encontrado)
+    cmp     r8d, 0                  ; FLAGS ← R8D − 0
+    jl      .doc_no                 ; fila < 0 → fuera del mapa
+    cmp     r8d, 60                 ; FLAGS ← R8D − 60
+    jge     .doc_no                 ; fila ≥ 60 → fuera del mapa
 
-    ; Calcular índice y leer celda
-    mov     eax, r8d
-    imul    eax, edx
-    add     eax, r9d
-    movsx   rax, eax
-    movzx   r11d, byte [rcx + rax]  ; r11d = celda actual
+    ; Verificación de límites: 0 ≤ col < 60
+    cmp     r9d, 0                  ; FLAGS ← R9D − 0
+    jl      .doc_no                 ; col < 0 → fuera del mapa
+    cmp     r9d, 60                 ; FLAGS ← R9D − 60
+    jge     .doc_no                 ; col ≥ 60 → fuera del mapa
 
-    ; Comparar con el objeto buscado
-    xor     eax, eax
-    cmp     r11d, r10d
-    jne     .doc_no
-    mov     eax, 1
+    ; Cálculo del índice lineal: idx = fila * columnas + col
+    mov     eax, r8d                ; EAX ← fila
+    imul    eax, edx                ; EAX ← fila * columnas
+    add     eax, r9d                ; EAX ← (fila * columnas) + col
+    movsx   rax, eax                ; RAX ← sign-extend(EAX): índice de 64 bits
+    movzx   r11d, byte [rcx + rax]  ; R11D ← zero-extend(mapa[idx]): byte de la celda
+
+    ; Comparación celda vs. objeto buscado
+    xor     eax, eax                ; EAX ← 0 (asumir no coincidencia)
+    cmp     r11d, r10d              ; FLAGS ← R11D − R10D
+    jne     .doc_no                 ; ≠ → celda no contiene el objeto
+    mov     eax, 1                  ; EAX ← 1: coincidencia confirmada
 
 .doc_no:
-    ret
+    ret                             ; retorna con EAX = 0 o 1
 
 ; =============================================================================
 ; FUNCIÓN 5: contar_celdas_libres
 ; Prototipo C: int contar_celdas_libres(char *mapa, int total_celdas);
 ;
-; Propósito : Cuenta cuántas celdas del mapa son camino libre (' ').
-;             Útil para estadísticas y verificaciones de nivel.
+; Entrada:
+;   RCX  — dirección base del mapa (char *)
+;   EDX  — total de celdas a examinar (int; 3600 para mapa 60×60)
 ;
-; Parámetros:
-;   RCX  = dirección base del mapa
-;   EDX  = total de celdas (3600 para 60×60)
+; Salida:
+;   EAX  — número de celdas cuyo byte es 0x20 (carácter espacio ' ')
 ;
-; Retorno:
-;   EAX  = número de celdas con carácter espacio (' ')
+; Operación en registros:
+;   EAX  acumula el conteo de celdas libres.
+;   R10D mantiene el índice de iteración (i).
+;   R11D almacena el byte leído de cada celda.
+;
+; Preservación: ningún registro no volátil es modificado.
 ; =============================================================================
 contar_celdas_libres:
-    xor     eax, eax            ; contador = 0
-    xor     r10d, r10d          ; índice   = 0
-    test    edx, edx
-    jle     .ccl_fin
+    xor     eax, eax            ; EAX ← 0 (contador de celdas libres)
+    xor     r10d, r10d          ; R10D ← 0 (índice i)
+    test    edx, edx            ; FLAGS ← EDX AND EDX
+    jle     .ccl_fin            ; EDX ≤ 0 → sin celdas que examinar
 
 .ccl_bucle:
-    cmp     r10d, edx
-    jge     .ccl_fin
-    movzx   r11d, byte [rcx + r10]
-    cmp     r11d, ' '           ; ¿es camino libre?
-    jne     .ccl_siguiente
-    inc     eax
+    cmp     r10d, edx           ; FLAGS ← R10D − EDX
+    jge     .ccl_fin            ; i ≥ total_celdas → fin de bucle
+    movzx   r11d, byte [rcx + r10]  ; R11D ← zero-extend(mapa[i])
+    cmp     r11d, ' '           ; FLAGS ← R11D − 0x20
+    jne     .ccl_siguiente      ; ≠ espacio → no contar
+    inc     eax                 ; EAX ← EAX + 1: celda libre registrada
 
 .ccl_siguiente:
-    inc     r10d
-    jmp     .ccl_bucle
+    inc     r10d                ; R10D ← R10D + 1 (i++)
+    jmp     .ccl_bucle          ; siguiente iteración
 
 .ccl_fin:
-    ret
+    ret                         ; retorna con EAX = total de celdas libres
 
 ; =============================================================================
 ; AUXILIAR: es_muro_asm
 ; Prototipo C: int es_muro_asm(char celda);
 ;
-; Mantiene compatibilidad con jugador.h existente.
-; Parámetros:
-;   CL   = carácter a evaluar
-; Retorno:
-;   EAX  = 1 si es '#', 0 si no
+; Entrada:
+;   CL   — byte del carácter a evaluar (primer parámetro: parte baja de RCX)
+;
+; Salida:
+;   EAX  = 1 si CL == '#' (0x23)
+;   EAX  = 0 en caso contrario
+;
+; Operación en registros:
+;   EAX  recibe el resultado booleano directamente.
+;
+; Propósito: mantiene compatibilidad con declaraciones previas en jugador.h
+;            que referencian este símbolo por nombre.
+; Preservación: ningún registro no volátil es modificado.
 ; =============================================================================
 es_muro_asm:
-    xor     eax, eax
-    cmp     cl, '#'
-    jne     .em_no_muro
-    mov     eax, 1
+    xor     eax, eax            ; EAX ← 0 (asumir que no es muro)
+    cmp     cl, '#'             ; FLAGS ← CL − 0x23
+    jne     .em_no_muro         ; CL ≠ '#' → saltar, EAX permanece 0
+    mov     eax, 1              ; EAX ← 1: el carácter es muro
+
 .em_no_muro:
-    ret
+    ret                         ; retorna con EAX = 0 o 1
